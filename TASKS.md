@@ -2,8 +2,6 @@
 
 ## 进行中
 
-- [ ] MIG-001 在 GitHub 创建 `wangbaocheng123-hash/sunmao-ai-community` 并推送 `main`。
-- [ ] MIG-002 建立 `production` 分支并验证与当前线上代码树一致。
 - [ ] MIG-003 在手机云端 Codex 建立只绑定独立仓库的环境。
 - [ ] MIG-004 经所有者明确发布授权后，把北京服务器发布源切换到新仓库并验证公网版本。
 
@@ -16,3 +14,5 @@
 ## 已完成
 
 - [x] MIG-000 从旧大仓库提取独立本地仓库并保留相关历史。
+- [x] MIG-001 在 GitHub 创建 `wangbaocheng123-hash/sunmao-ai-community` 并同步 `main`。
+- [x] MIG-002 建立 `production` 分支并核验代码内容。
