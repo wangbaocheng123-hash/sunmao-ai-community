@@ -27,7 +27,7 @@ python -m sunmao_community --host 127.0.0.1 --port 4173 --database .runtime/comm
 
 普通 `main` 推送只保存开发检查点，不上线。所有者明确说“更新并发布榫卯AI社区：<具体需求>”后，才允许把已验收提交安全快进到 `production`，再触发固定的一次性 `sunmao-community-git-deploy.service`。该发布只切换 `/opt/sunmao-community/current` 并重启社区进程。
 
-当前网站已经由独立社区进程提供。把 Git 来源从旧大仓库切到本仓库时，必须先确认新仓库 `production` 与当前线上代码树一致，备份发布状态，再做一次可回滚切换。普通社区功能发布不修改 Caddy，也不重启博主采集器。
+服务器已于 2026-10-13 切换到本独立仓库，并完成公网验收。当前网站由独立社区进程提供；普通社区功能发布不修改 Caddy，也不重启博主采集器。修改 `main` 或在手机云端完成任务不等于网站已发布：仍须经授权推进 `production`，在服务器触发上述发布服务，最后核对公网 `/health/version` 的提交号。
 
 ## 手机云端 Codex
 
