@@ -23,6 +23,18 @@ python -m unittest discover -s tests -p "test_*.py"
 python -m sunmao_community --host 127.0.0.1 --port 4173 --database .runtime/community.sqlite3
 ```
 
+## 管理后台与访问统计
+
+开发版本提供 `/admin/` 管理入口。第一版可查看今日与累计匿名访客、访问次数、浏览量、近 7～90 日趋势、栏目、来源域名、设备和最近访客。访客以浏览器随机编号显示；系统不保存 IP 地址或完整 User-Agent。
+
+后台默认关闭。密码摘要只存运行数据目录，不进入 Git。生成摘要：
+
+```powershell
+python -m scripts.generate_admin_password_hash
+```
+
+生产环境把输出以 `0600` 权限保存为 `/var/lib/sunmao-community/admin-password.hash`，属主设为 `sunmaocommunity:sunmaocommunity`，再重启社区服务。也可通过 `SUNMAO_ADMIN_PASSWORD_HASH` 或 `SUNMAO_ADMIN_PASSWORD_HASH_FILE` 指定，但不得把值写进仓库。具体架构与商业化顺序见 `docs/ADMIN_AND_MONETIZATION_PLAN.md`，隐私与认证决策见 `docs/decisions/ADR-0002-first-party-analytics-and-admin.md`。
+
 ## 发布规则
 
 普通 `main` 推送只保存开发检查点，不上线。所有者明确说“更新并发布榫卯AI社区：<具体需求>”后，才允许把已验收提交安全快进到 `production`，再触发固定的一次性 `sunmao-community-git-deploy.service`。该发布只切换 `/opt/sunmao-community/current` 并重启社区进程。

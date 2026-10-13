@@ -7,6 +7,20 @@ const MESSAGE_REFRESH_INTERVAL = 15000;
 let activeView = "exchange";
 let collectionLoaded = false;
 let messagesLoaded = false;
+let lastTrackedView = "";
+let analyticsQueue = Promise.resolve();
+
+function recordPageview(view) {
+  analyticsQueue = analyticsQueue.catch(() => undefined).then(() => fetch("/api/analytics/pageview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ view, referrer: document.referrer || "" }),
+    credentials: "same-origin",
+    keepalive: true,
+  })).catch(() => {
+    // Analytics must never interrupt the public community experience.
+  });
+}
 
 function isTrustedVideoUrl(value) {
   try {
@@ -223,6 +237,10 @@ function setActiveView(view, { updateHash = true } = {}) {
   window.scrollTo({ top: 0, behavior: "smooth" });
   if (activeView === "joints") loadCollection();
   if (activeView === "exchange" && !messagesLoaded) loadMessages();
+  if (lastTrackedView !== activeView) {
+    lastTrackedView = activeView;
+    recordPageview(activeView);
+  }
 }
 
 function initialize() {
