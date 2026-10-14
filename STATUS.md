@@ -6,6 +6,7 @@
 - 所有者明确要求本次修改后发布。功能提交 `28276ad681a477fb0e71e44a1ebd5c20b6d1ffe4` 已在 `2026-10-14T01:31Z` 推送到 `production`；服务器日志证实 Webhook 在北京时间 09:31:53 自动启动固定发布器，09:32:39 成功完成，回环 `/health/version` 返回 `0.3.2` 和该精确提交。右上角刷新按钮的 HTML 与 JavaScript 已在线上文件中核验。
 - 手机云端误报的原因不是发布失败，而是域名从外部访问被阿里云备案边缘拦截：HTTP 返回 403 `Non-compliance ICP Filing`，HTTPS 握手失败；北京服务器自身访问同域名仍为 Caddy 200。域名恢复对外访问需要完成备案或改用境外入口，作为独立运维事项跟踪。
 - 为避免以后把域名故障误报成发布失败，北京 Caddy 只额外公开 `http://47.93.214.76/health/version` 这一项无敏感信息的只读部署探针。GitHub Actions 与发布脚本据此核对 `production` 的精确提交；它不提供网页、后台或写接口，不持有服务器凭据，也不改变签名 Webhook 发布方式。
+- 本轮验收还复现了 Git 部分克隆在主引用更新后补取 blob 失败的边界情况。发布器改为有界全对象重取，并且只在发布包已经完整落盘后才允许记录坏版本；纯网络失败不会污染失败提交状态，systemd 可继续有界重试或转入 API/codeload 备用链路。
 - 已从 `instant-ai-finance/services/sunmao-ai-community` 提取为独立 Git 仓库，并保留社区相关提交历史归档。
 - 公开远端仓库 `wangbaocheng123-hash/sunmao-ai-community` 已创建；`main` 和 `production` 均已建立。
 - 远端 30 个文件已和本地 Git 内容逐项核对，差异仅为 GitHub 网页上传不保留 4 个脚本的可执行位；服务器安装器会明确安装为 `0755`。

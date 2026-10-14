@@ -35,9 +35,15 @@ class IndependentDeploymentContractTests(unittest.TestCase):
         self.assertIn("special codeload object rejected", publisher)
         self.assertIn("--retry-all-errors", publisher)
         self.assertIn("timeout --signal=TERM 45s", publisher)
+        self.assertIn("--refetch --no-filter", publisher)
         self.assertIn("flock -n", publisher)
         self.assertIn("validate_release_path", publisher)
         self.assertIn("release marker mismatch", publisher)
+        self.assertNotIn("cat-file -e", publisher)
+        self.assertGreater(
+            publisher.index("mark_target_failed=true"),
+            publisher.index('[[ -f "${stage_dir}/${required}" ]]'),
+        )
         self.assertNotIn("beijing-production", publisher)
         self.assertNotIn("systemctl restart blogger-collector", publisher)
         self.assertNotIn("/var/lib/blogger-agent", publisher)

@@ -123,7 +123,7 @@ fetch_production_with_git() {
   if timeout --signal=TERM 45s runuser -u "${GIT_USER}" -- \
       git --git-dir="${BARE_REPOSITORY}" \
       -c http.lowSpeedLimit=1 -c http.lowSpeedTime=30 \
-      fetch --filter=blob:none --no-tags --prune origin \
+      fetch --refetch --no-filter --no-tags --prune origin \
       "+refs/heads/production:${PRODUCTION_REF}"; then
     return 0
   fi
@@ -259,12 +259,10 @@ if [[ -n "${accepted_commit}" && "${accepted_commit}" == "${target_commit}" && "
   service_is_healthy || fail "current service is unhealthy"; log "already accepted revision=${target_commit}"; exit 0
 fi
 
-mark_target_failed=true
 if [[ "${source_mode}" == git ]]; then
   listing="$(mktemp "${STATE_DIR}/tree.XXXXXX")"
   git_read ls-tree -r -z "${target_commit}" >"${listing}"
   validate_tree "${listing}"; rm -f -- "${listing}"
-  for required in VERSION sunmao_community/app.py web/index.html web/videos.json; do git_read cat-file -e "${target_commit}:${required}" || fail "required release file missing"; done
 fi
 
 previous_release=""
@@ -282,6 +280,7 @@ if [[ ! -e "${release_dir}" ]]; then
     extract_codeload_release "${target_commit}" "${stage_dir}"
   fi
   for required in VERSION sunmao_community/app.py web/index.html web/videos.json; do [[ -f "${stage_dir}/${required}" ]] || fail "required release file missing"; done
+  mark_target_failed=true
   printf '{"repository_revision":"%s","deployed_time":"%s"}\n' "${target_commit}" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >"${stage_dir}/DEPLOYMENT.json"
   run_release_tests "${stage_dir}"
   printf '%s\n' "${target_commit}" >"${stage_dir}/.sunmao-community-release"
