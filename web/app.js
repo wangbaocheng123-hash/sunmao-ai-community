@@ -243,6 +243,17 @@ function setActiveView(view, { updateHash = true } = {}) {
   }
 }
 
+function reloadPage() {
+  const bodyInput = document.querySelector("#messageBody");
+  if (bodyInput.value.trim()
+    && !window.confirm("还有未发表的内容，刷新后会丢失。确定刷新吗？")) return;
+  const button = document.querySelector("#reloadPage");
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  document.querySelector("#reloadLabel").textContent = "刷新中…";
+  window.location.reload();
+}
+
 function initialize() {
   document.querySelectorAll("[data-view-target]").forEach((button) => {
     button.addEventListener("click", () => setActiveView(button.dataset.viewTarget));
@@ -256,6 +267,7 @@ function initialize() {
   nicknameInput.addEventListener("input", () => updateCounter(nicknameInput, document.querySelector("#nicknameCount")));
   bodyInput.addEventListener("input", () => updateCounter(bodyInput, document.querySelector("#messageCount")));
   document.querySelector("#messageForm").addEventListener("submit", submitMessage);
+  document.querySelector("#reloadPage").addEventListener("click", reloadPage);
   document.querySelector("#refreshMessages").addEventListener("click", () => loadMessages());
   window.addEventListener("hashchange", () => setActiveView(window.location.hash.slice(1), { updateHash: false }));
   setInterval(() => {

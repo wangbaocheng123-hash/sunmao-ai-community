@@ -2,6 +2,8 @@
 
 更新时间：2026-10-14
 
+- 本次 `0.3.2` 候选新增页面右上角「刷新」按钮，三个栏目均可重新加载并保留当前栏目；存在未发表文字时先确认，刷新过程中显示状态并禁用按钮。已通过 27 项自动化测试及 Chromium 的 320/390/1280px 布局、三个栏目重载、草稿取消与确认验证，待生产发布验收。
+- 当前云端直访社区仍遇到代理上游连接失败 503；新增 GitHub Actions 只读验收流程，等待公网 `/health/version` 精确提交并检查公开页面资源。该流程不持有 SSH 或发布密钥、不触发服务器部署，正式发布仍由原有签名 Webhook 完成。
 - 已从 `instant-ai-finance/services/sunmao-ai-community` 提取为独立 Git 仓库，并保留社区相关提交历史归档。
 - 公开远端仓库 `wangbaocheng123-hash/sunmao-ai-community` 已创建；`main` 和 `production` 均已建立。
 - 远端 30 个文件已和本地 Git 内容逐项核对，差异仅为 GitHub 网页上传不保留 4 个脚本的可执行位；服务器安装器会明确安装为 `0755`。
@@ -20,7 +22,7 @@
 - `0.3.0` 发布时，本地桌面曾经新加坡 `/home/compassdev/bin/beijing-admin` 人工触发北京固定发布器。该路径现只保留为首次基础设施安装与故障维护，不是手机 Codex Cloud 日常修改或发布的前置。
 - 当前固定发布入口为在独立仓库运行 `deploy/beijing/publish-via-git.sh <完整提交SHA>`：它只安全快进 `production`并等待公网精确版本。GitHub 签名 Webhook 自动通知北京，不再要求云端或所有者登录任何服务器。
 - 手机 Codex Cloud 只需选择社区独立仓库；它直接修改、测试并推送 GitHub。普通 `main` 不上线；收到所有者固定发布指令后推进 `production`，北京即按事件自行发布。
-- 仓库没有 GitHub Actions 发布工作流；现使用仓库 Webhook 和北京社区固定发布器。密钥不进入 Git，服务器不启用 Git 定时轮询。
+- 仓库没有 GitHub Actions 发布工作流；仅增加只读的线上版本验收工作流。发布继续使用仓库 Webhook 和北京社区固定发布器。密钥不进入 Git，服务器不启用 Git 定时轮询。
 - 公网 `/admin/` 返回 200 和 `X-Robots-Tag: noindex, nofollow`；密码登录返回 200，带会话读取统计看板返回 200。发布验收写入 1 条明确标记的测试访问，统计显示 1 位访客、1 次访问、1 次浏览，并返回趋势、栏目、来源、设备和最近访客数据结构。
 - 当前自动化测试：27 项；功能提交发布前在 Linux 环境全部通过，服务器固定发布器完成验证和原子切换。
 - `0.3.1` 开发候选已将未来日常发布改为 GitHub `production` push 事件驱动：社区进程验证 HMAC-SHA256 签名、精确仓库、分支和提交号，再写入短暂触发文件，systemd path 仅启动社区固定发布器。不增加 Git 轮询 timer，不要求云端 Codex 连接新加坡或北京 SSH。

@@ -1,0 +1,46 @@
+name: Verify community production
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sunmao-production-verification
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Verify the exact public release
+        env:
+          EXPECTED_REVISION: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          site='https://xn--4pv19va7008a.com'
+          for attempt in $(seq 1 60); do
+            payload="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
+              "${site}/health/version?verify=${EXPECTED_REVISION}&attempt=${attempt}" 2>/dev/null || true)"
+            if printf '%s' "$payload" | python3 -c \
+              'import json,sys; p=json.load(sys.stdin); sys.exit(0 if p.get("service")=="sunmao-ai-community" and p.get("repository_revision")==sys.argv[1] else 1)' \
+              "$EXPECTED_REVISION" 2>/dev/null; then
+              for path in / /app.js /styles.css /admin/; do
+                curl --fail --silent --show-error --retry 2 --connect-timeout 5 --max-time 15 \
+                  --output /dev/null "${site}${path}"
+              done
+              printf 'SUNMAO_PUBLIC_RELEASE_VERIFIED %s\n' "$EXPECTED_REVISION"
+              printf 'Public community version and page assets verified: `%s`.\n' "$EXPECTED_REVISION" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            printf 'Waiting for community release (%s/60).\n' "$attempt"
+            sleep 10
+          done
+          printf 'Public community did not confirm revision %s.\n' "$EXPECTED_REVISION" >&2
+          exit 1
