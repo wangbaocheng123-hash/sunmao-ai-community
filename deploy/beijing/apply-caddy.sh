@@ -33,27 +33,41 @@ import sys
 target_path, template_path, staged_path = map(Path, sys.argv[1:])
 target = target_path.read_text(encoding="utf-8")
 template = template_path.read_text(encoding="utf-8").strip() + "\n"
-marker = "xn--4pv19va7008a.com {"
-start = target.find(marker)
-if start < 0:
-    output = target.rstrip() + "\n\n" + template
-else:
-    if target.find(marker, start + len(marker)) >= 0:
-        raise SystemExit("sunmao_caddy_error=site_block_count")
-    depth = 0
-    end = None
-    for index in range(start, len(target)):
-        if target[index] == "{":
-            depth += 1
-        elif target[index] == "}":
-            depth -= 1
-            if depth == 0:
-                end = index + 1
-                break
-    if end is None:
-        raise SystemExit("sunmao_caddy_error=unterminated_site_block")
+begin_marker = "# BEGIN SUNMAO COMMUNITY"
+end_marker = "# END SUNMAO COMMUNITY"
+legacy_marker = "xn--4pv19va7008a.com {"
+
+start = target.find(begin_marker)
+if start >= 0:
+    if target.find(begin_marker, start + len(begin_marker)) >= 0:
+        raise SystemExit("sunmao_caddy_error=managed_block_count")
+    end = target.find(end_marker, start + len(begin_marker))
+    if end < 0:
+        raise SystemExit("sunmao_caddy_error=unterminated_managed_block")
+    end += len(end_marker)
     parts = (target[:start].rstrip(), template.rstrip(), target[end:].lstrip().rstrip())
     output = "\n\n".join(part for part in parts if part) + "\n"
+else:
+    start = target.find(legacy_marker)
+    if start < 0:
+        output = target.rstrip() + "\n\n" + template
+    else:
+        if target.find(legacy_marker, start + len(legacy_marker)) >= 0:
+            raise SystemExit("sunmao_caddy_error=site_block_count")
+        depth = 0
+        end = None
+        for index in range(start, len(target)):
+            if target[index] == "{":
+                depth += 1
+            elif target[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = index + 1
+                    break
+        if end is None:
+            raise SystemExit("sunmao_caddy_error=unterminated_site_block")
+        parts = (target[:start].rstrip(), template.rstrip(), target[end:].lstrip().rstrip())
+        output = "\n\n".join(part for part in parts if part) + "\n"
 Path(staged_path).write_text(output, encoding="utf-8")
 PY
 
@@ -65,6 +79,7 @@ mv -f -- "${STAGED}" "${TARGET}"
 systemctl reload caddy.service
 [[ "$(systemctl is-active caddy.service)" == 'active' ]]
 curl --fail --silent --show-error --max-time 10 https://xn--4pv19va7008a.com/health >/dev/null
+curl --fail --silent --show-error --max-time 10 http://47.93.214.76/health/version >/dev/null
 
 printf '%s\n' 'sunmao_community_caddy_applied=true'
 printf 'sunmao_community_caddy_backup=%s\n' "${BACKUP}"

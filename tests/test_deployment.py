@@ -55,10 +55,16 @@ class IndependentDeploymentContractTests(unittest.TestCase):
         caddy = self.read("sunmao-community.Caddyfile.example")
         apply_script = self.read("apply-caddy.sh")
         self.assertIn("reverse_proxy 127.0.0.1:18808", caddy)
+        self.assertIn("http://47.93.214.76", caddy)
+        self.assertIn("path /health/version", caddy)
+        self.assertIn("# BEGIN SUNMAO COMMUNITY", caddy)
+        self.assertIn("# END SUNMAO COMMUNITY", caddy)
         self.assertNotIn("rewrite * /community", caddy)
         self.assertNotIn("18797", caddy)
         self.assertIn("restore_previous_config", apply_script)
         self.assertIn("http://127.0.0.1:18808/health", apply_script)
+        self.assertIn("begin_marker", apply_script)
+        self.assertIn("http://47.93.214.76/health/version", apply_script)
         self.assertNotIn("systemctl restart blogger-collector", apply_script)
 
     def test_release_trigger_is_independent(self) -> None:
@@ -68,6 +74,8 @@ class IndependentDeploymentContractTests(unittest.TestCase):
         self.assertNotIn("refs/heads/beijing-production", script)
         self.assertNotIn("blogger-collector-git-deploy.service", script)
         self.assertIn("SUNMAO_GITHUB_WEBHOOK_TRIGGER_SENT", script)
+        self.assertIn("DEPLOYMENT_PROBE_URL", script)
+        self.assertIn("http://47.93.214.76/health/version", script)
         self.assertNotIn("remote_command=systemctl", script)
 
     def test_installer_keeps_collector_running_and_adds_no_timer(self) -> None:

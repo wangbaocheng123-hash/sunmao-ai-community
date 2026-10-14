@@ -17,7 +17,7 @@
 4. 验签成功后只能在 `/run/sunmao-community/` 写入一个触发文件。systemd path 单元据此启动已有的 `sunmao-community-git-deploy.service`；公网请求不能选择命令、参数或其他服务。
 5. 不安装 Git 轮询 timer，systemd path 平时没有用户态常驻进程。只有正式分支改变时才运行现有发布器和隔离测试。
 6. 新加坡 `/home/compassdev/bin/beijing-admin` 只在首次安装或故障维护时作为管理通道，不再参与日常修改和发布。
-7. `0.3.2` 增加 GitHub Actions 只读验收：在生产分支 push 后等待公网精确提交并检查公开页面资源，用于云端 HTTPS 代理无法访问网站时提供独立验证。工作流只有仓库读取权限，不持有服务器凭据，也不能触发或改变发布；发布通道仍是上述签名 Webhook。
+7. `0.3.2` 增加 GitHub Actions 只读验收：在生产分支 push 后通过独立版本探针等待北京进程报告精确提交。工作流只有仓库读取权限，不持有服务器凭据，也不能触发或改变发布；发布通道仍是上述签名 Webhook。探针的安全与域名故障边界见 ADR-0004。
 
 ## 安全与故障边界
 

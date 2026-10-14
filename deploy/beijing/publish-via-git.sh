@@ -3,7 +3,8 @@ set -euo pipefail
 
 readonly REPOSITORY_ROOT="$(git rev-parse --show-toplevel)"
 readonly EXPECTED_REPOSITORY="wangbaocheng123-hash/sunmao-ai-community.git"
-readonly VERSION_URL="https://xn--4pv19va7008a.com/health/version"
+readonly PRIMARY_VERSION_URL="https://xn--4pv19va7008a.com/health/version"
+readonly DEPLOYMENT_PROBE_URL="http://47.93.214.76/health/version"
 
 fail() { printf 'SUNMAO_GIT_PUBLISH_FAILED: %s\n' "$*" >&2; exit 1; }
 [[ $# -eq 1 ]] || fail "只接受一个完整 Git 提交 SHA"
@@ -30,14 +31,17 @@ git push origin "${target}:refs/heads/production"
 printf '%s\n' 'SUNMAO_GITHUB_WEBHOOK_TRIGGER_SENT'
 
 for _attempt in $(seq 1 90); do
-  payload="$(curl --fail --silent --show-error --max-time 10 "${VERSION_URL}" 2>/dev/null || true)"
-  deployed="$(printf '%s' "${payload}" | python3 -c 'import json,sys; value=json.load(sys.stdin); print(value.get("repository_revision", ""))' 2>/dev/null || true)"
-  if [[ "${deployed}" == "${target}" ]]; then
-    printf '%s\n' 'SUNMAO_GIT_PUBLISH_OK'
-    printf 'previous=%s\n' "${current_production:-none}"
-    printf 'deployed=%s\n' "${target}"
-    exit 0
-  fi
+  for version_url in "${PRIMARY_VERSION_URL}" "${DEPLOYMENT_PROBE_URL}"; do
+    payload="$(curl --fail --silent --show-error --connect-timeout 4 --max-time 8 "${version_url}" 2>/dev/null || true)"
+    deployed="$(printf '%s' "${payload}" | python3 -c 'import json,sys; value=json.load(sys.stdin); print(value.get("repository_revision", ""))' 2>/dev/null || true)"
+    if [[ "${deployed}" == "${target}" ]]; then
+      printf '%s\n' 'SUNMAO_GIT_PUBLISH_OK'
+      printf 'previous=%s\n' "${current_production:-none}"
+      printf 'deployed=%s\n' "${target}"
+      printf 'verified_via=%s\n' "${version_url}"
+      exit 0
+    fi
+  done
   sleep 10
 done
-fail "社区生产分支已更新，但公网版本在15分钟内未确认 ${target}"
+fail "社区生产分支已更新，但域名和只读部署探针均未在15分钟内确认 ${target}"

@@ -1,3 +1,4 @@
+# BEGIN SUNMAO COMMUNITY
 xn--4pv19va7008a.com {
     encode zstd gzip
 
@@ -12,3 +13,22 @@ xn--4pv19va7008a.com {
         -Server
     }
 }
+
+# 阿里云备案边缘可能阻断域名请求。这个 IP 入口只公开无敏感信息的精确版本，
+# 供 GitHub Actions 和 Codex Cloud 区分“部署失败”与“域名访问受阻”。
+http://47.93.214.76 {
+    @version_probe {
+        method GET HEAD
+        path /health/version
+    }
+
+    handle @version_probe {
+        reverse_proxy 127.0.0.1:18808
+        header Cache-Control "no-store, max-age=0"
+        header X-Content-Type-Options "nosniff"
+        header -Server
+    }
+
+    respond 404
+}
+# END SUNMAO COMMUNITY

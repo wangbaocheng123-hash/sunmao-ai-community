@@ -39,7 +39,9 @@ python -m scripts.generate_admin_password_hash
 
 普通 `main` 推送只保存开发检查点，不上线。所有者明确说“更新并发布榫卯AI社区：<具体需求>”后，才允许把已验收提交安全快进到 `production`。GitHub 随后发送带 HMAC-SHA256 签名的 push Webhook；北京社区进程验证仓库、分支、提交号和签名后，通过 systemd path 一次性启动 `sunmao-community-git-deploy.service`。该发布只切换 `/opt/sunmao-community/current` 并重启社区进程。
 
-服务器已于 2026-10-13 切换到本独立仓库，并完成公网验收。当前网站由独立社区进程提供；普通社区功能发布不修改 Caddy，也不重启博主采集器。修改 `main` 或在手机云端完成任务不等于网站已发布：仍须经授权推进 `production`，由 GitHub 事件触发北京固定发布器，最后核对公网 `/health/version` 的提交号。服务器不进行每分钟或其他周期的 Git 轮询。
+服务器已于 2026-10-13 切换到本独立仓库。当前网站由独立社区进程提供；普通社区功能发布不重启博主采集器。修改 `main` 或在手机云端完成任务不等于网站已发布：仍须经授权推进 `production`，由 GitHub 事件触发北京固定发布器，最后核对只读部署探针 `/health/version` 的提交号。服务器不进行每分钟或其他周期的 Git 轮询。
+
+当前 `阿木爷爷.com` 从北京服务器自身访问正常，但从部分外部网络会被阿里云备案边缘拦截。为区分“代码未部署”和“域名被拦截”，机器验收可读取 `http://47.93.214.76/health/version`；该 IP 入口只开放版本 JSON，其他路径返回404。它不是面向用户的网站替代地址，正式域名仍需完成备案或迁移到经确认的境外入口。
 
 ## 手机云端 Codex
 
