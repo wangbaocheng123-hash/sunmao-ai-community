@@ -9,13 +9,14 @@ readonly BARE_REPOSITORY="/opt/sunmao-community/production-source.git"
 readonly PUBLISHER_TARGET="/usr/local/sbin/sunmao-community-git-deploy"
 readonly DEPLOY_SERVICE_TARGET="/etc/systemd/system/sunmao-community-git-deploy.service"
 readonly APP_SERVICE_TARGET="/etc/systemd/system/sunmao-ai-community.service"
+readonly PATH_UNIT_TARGET="/etc/systemd/system/sunmao-community-deploy-trigger.path"
 readonly GIT_USER="sunmaogit"
 readonly BUILD_USER="sunmaobuild"
 readonly APP_USER="sunmaocommunity"
 
 fail() { printf 'sunmao-community-install: ERROR %s\n' "$*" >&2; exit 1; }
 [[ "$(id -u)" -eq 0 ]] || fail "installer must run as root"
-for file in sunmao-community-git-deploy sunmao-community-git-deploy.service sunmao-ai-community.service; do
+for file in sunmao-community-git-deploy sunmao-community-git-deploy.service sunmao-ai-community.service sunmao-community-deploy-trigger.path; do
   [[ -f "${SOURCE_DIR}/${file}" ]] || fail "missing reviewed file ${file}"
 done
 systemctl is-active --quiet blogger-collector.service || fail "collector must remain healthy during peer installation"
@@ -43,8 +44,9 @@ fi
 install -o root -g root -m 0755 "${SOURCE_DIR}/sunmao-community-git-deploy" "${PUBLISHER_TARGET}"
 install -o root -g root -m 0644 "${SOURCE_DIR}/sunmao-community-git-deploy.service" "${DEPLOY_SERVICE_TARGET}"
 install -o root -g root -m 0644 "${SOURCE_DIR}/sunmao-ai-community.service" "${APP_SERVICE_TARGET}"
+install -o root -g root -m 0644 "${SOURCE_DIR}/sunmao-community-deploy-trigger.path" "${PATH_UNIT_TARGET}"
 systemctl daemon-reload
 systemctl enable sunmao-ai-community.service >/dev/null
 systemctl disable --now sunmao-community-git-deploy.timer >/dev/null 2>&1 || true
 printf '%s\n' 'sunmao_community_independent_channel_installed=true'
-printf '%s\n' 'next=push production, start sunmao-community-git-deploy.service, then apply-caddy.sh'
+printf '%s\n' 'next=provision the GitHub webhook secret with install-github-webhook-trigger.sh'

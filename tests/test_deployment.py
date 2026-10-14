@@ -59,9 +59,10 @@ class IndependentDeploymentContractTests(unittest.TestCase):
         script = self.read("publish-via-git.sh")
         self.assertIn("wangbaocheng123-hash/sunmao-ai-community.git", script)
         self.assertIn("refs/heads/production", script)
-        self.assertIn("sunmao-community-git-deploy.service", script)
         self.assertNotIn("refs/heads/beijing-production", script)
         self.assertNotIn("blogger-collector-git-deploy.service", script)
+        self.assertIn("SUNMAO_GITHUB_WEBHOOK_TRIGGER_SENT", script)
+        self.assertNotIn("remote_command=systemctl", script)
 
     def test_installer_keeps_collector_running_and_adds_no_timer(self) -> None:
         installer = self.read("install-independent-service.sh")
@@ -71,6 +72,29 @@ class IndependentDeploymentContractTests(unittest.TestCase):
         self.assertIn("enable sunmao-ai-community.service", installer)
         self.assertNotIn("systemctl stop blogger-collector", installer)
         self.assertNotIn("systemctl restart blogger-collector", installer)
+
+    def test_event_trigger_is_signed_scoped_and_has_no_resident_poller(self) -> None:
+        path_unit = self.read("sunmao-community-deploy-trigger.path")
+        webhook_installer = self.read("install-github-webhook-trigger.sh")
+        app_service = self.read("sunmao-ai-community.service")
+        deploy_service = self.read("sunmao-community-git-deploy.service")
+        webhook_module = (PROJECT_ROOT / "sunmao_community" / "deploy_webhook.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("PathExists=/run/sunmao-community/deploy.trigger", path_unit)
+        self.assertIn("Unit=sunmao-community-git-deploy.service", path_unit)
+        self.assertNotIn("OnUnitActiveSec", path_unit)
+        self.assertNotIn("OnCalendar", path_unit)
+        self.assertIn("github-webhook.secret", webhook_installer)
+        self.assertIn("standard input", webhook_installer)
+        self.assertIn("blogger-collector.service", webhook_installer)
+        self.assertNotIn("systemctl restart blogger-collector", webhook_installer)
+        self.assertIn("RuntimeDirectory=sunmao-community", app_service)
+        self.assertIn("ExecStartPre=-/usr/bin/rm -f /run/sunmao-community/deploy.trigger", deploy_service)
+        self.assertIn('EXPECTED_REPOSITORY = "wangbaocheng123-hash/sunmao-ai-community"', webhook_module)
+        self.assertIn('EXPECTED_REF = "refs/heads/production"', webhook_module)
+        self.assertIn("hmac.compare_digest", webhook_module)
 
 
 if __name__ == "__main__":

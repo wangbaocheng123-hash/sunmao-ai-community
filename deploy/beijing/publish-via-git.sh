@@ -27,8 +27,7 @@ if git ls-remote --exit-code --heads origin production >/dev/null 2>&1; then
 fi
 
 git push origin "${target}:refs/heads/production"
-printf '%s\n' 'SUNMAO_ON_DEMAND_TRIGGER_REQUIRED'
-printf '%s\n' 'remote_command=systemctl start --no-block sunmao-community-git-deploy.service'
+printf '%s\n' 'SUNMAO_GITHUB_WEBHOOK_TRIGGER_SENT'
 
 for _attempt in $(seq 1 90); do
   payload="$(curl --fail --silent --show-error --max-time 10 "${VERSION_URL}" 2>/dev/null || true)"

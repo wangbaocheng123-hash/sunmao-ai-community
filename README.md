@@ -37,10 +37,10 @@ python -m scripts.generate_admin_password_hash
 
 ## 发布规则
 
-普通 `main` 推送只保存开发检查点，不上线。所有者明确说“更新并发布榫卯AI社区：<具体需求>”后，才允许把已验收提交安全快进到 `production`，再触发固定的一次性 `sunmao-community-git-deploy.service`。该发布只切换 `/opt/sunmao-community/current` 并重启社区进程。
+普通 `main` 推送只保存开发检查点，不上线。所有者明确说“更新并发布榫卯AI社区：<具体需求>”后，才允许把已验收提交安全快进到 `production`。GitHub 随后发送带 HMAC-SHA256 签名的 push Webhook；北京社区进程验证仓库、分支、提交号和签名后，通过 systemd path 一次性启动 `sunmao-community-git-deploy.service`。该发布只切换 `/opt/sunmao-community/current` 并重启社区进程。
 
-服务器已于 2026-10-13 切换到本独立仓库，并完成公网验收。当前网站由独立社区进程提供；普通社区功能发布不修改 Caddy，也不重启博主采集器。修改 `main` 或在手机云端完成任务不等于网站已发布：仍须经授权推进 `production`，在服务器触发上述发布服务，最后核对公网 `/health/version` 的提交号。
+服务器已于 2026-10-13 切换到本独立仓库，并完成公网验收。当前网站由独立社区进程提供；普通社区功能发布不修改 Caddy，也不重启博主采集器。修改 `main` 或在手机云端完成任务不等于网站已发布：仍须经授权推进 `production`，由 GitHub 事件触发北京固定发布器，最后核对公网 `/health/version` 的提交号。服务器不进行每分钟或其他周期的 Git 轮询。
 
 ## 手机云端 Codex
 
-新建云端任务时只选择 `sunmao-ai-community` 仓库和默认环境。任务描述写清“只修改榫卯 AI 社区；完成后运行全部测试；未经‘更新并发布榫卯AI社区’指令不得推进 `production`”。这样手机端不会把其他系统的代码带进任务上下文。
+新建云端任务时只选择 `sunmao-ai-community` 仓库和默认环境。任务描述写清“只修改榫卯 AI 社区；完成后运行全部测试；未经‘更新并发布榫卯AI社区’指令不得推进 `production`”。手机上的 Codex Cloud 直接操作 GitHub 仓库，不需要连接或运行在新加坡服务器。正式发布由 `production` 事件触发北京社区固定发布器。

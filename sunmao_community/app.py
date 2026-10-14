@@ -16,6 +16,11 @@ from urllib.parse import parse_qs, urlsplit
 
 from .analytics import CommunityAnalyticsStore, VALID_ANALYTICS_VIEWS
 from .auth import ADMIN_SESSION_SECONDS, AdminSessionManager
+from .deploy_webhook import (
+    evaluate_github_webhook,
+    load_webhook_secret,
+    write_deploy_trigger,
+)
 from .store import CommunityMessageStore, CommunityRateLimiter, validate_community_message
 
 
@@ -24,6 +29,8 @@ WEB_DIR = ROOT_DIR / "web"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 18808
 MAX_REQUEST_BODY_BYTES = 8 * 1024
+MAX_WEBHOOK_BODY_BYTES = 1024 * 1024
+GITHUB_WEBHOOK_PATH = "/api/deploy/github"
 VISITOR_COOKIE = "sunmao_visitor"
 VISIT_SESSION_COOKIE = "sunmao_visit_session"
 ADMIN_COOKIE = "sunmao_admin_session"
@@ -84,6 +91,14 @@ def _configured_admin_password_hash() -> str:
         return ""
 
 
+def _configured_github_webhook_secret() -> bytes:
+    configured_path = os.getenv(
+        "SUNMAO_GITHUB_WEBHOOK_SECRET_FILE",
+        "/etc/sunmao-community/github-webhook.secret",
+    )
+    return load_webhook_secret(Path(configured_path))
+
+
 class CommunityHTTPServer(ThreadingHTTPServer):
     def __init__(
         self,
@@ -91,10 +106,14 @@ class CommunityHTTPServer(ThreadingHTTPServer):
         store: CommunityMessageStore,
         analytics_store: CommunityAnalyticsStore,
         admin_auth: AdminSessionManager,
+        github_webhook_secret: bytes,
+        deploy_trigger_path: Path,
     ):
         self.store = store
         self.analytics_store = analytics_store
         self.admin_auth = admin_auth
+        self.github_webhook_secret = github_webhook_secret
+        self.deploy_trigger_path = deploy_trigger_path
         self.rate_limiter = CommunityRateLimiter()
         self.admin_rate_limiter = CommunityRateLimiter(cooldown_seconds=2, hourly_limit=12)
         super().__init__(address, CommunityRequestHandler)
@@ -189,6 +208,19 @@ class CommunityRequestHandler(BaseHTTPRequestHandler):
         except (UnicodeDecodeError, json.JSONDecodeError):
             self._json({"error": "invalid_json"}, HTTPStatus.BAD_REQUEST)
             return None
+
+    def _read_raw_body(self, *, maximum_bytes: int) -> bytes | None:
+        if self.headers.get("Transfer-Encoding"):
+            self._json({"error": "invalid_request"}, HTTPStatus.BAD_REQUEST)
+            return None
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            content_length = -1
+        if content_length < 1 or content_length > maximum_bytes:
+            self._json({"error": "invalid_request_size"}, HTTPStatus.BAD_REQUEST)
+            return None
+        return self.rfile.read(content_length)
 
     def _origin_allowed(self) -> bool:
         origin = str(self.headers.get("Origin") or "").strip()
@@ -334,7 +366,30 @@ class CommunityRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/admin/logout":
             self._post_admin_logout()
             return
+        if path == GITHUB_WEBHOOK_PATH:
+            self._post_github_deploy()
+            return
         self._json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
+
+    def _post_github_deploy(self) -> None:
+        secret = self.server.github_webhook_secret
+        if not secret:
+            self._json({"error": "deploy_webhook_unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+        body = self._read_raw_body(maximum_bytes=MAX_WEBHOOK_BODY_BYTES)
+        if body is None:
+            return
+        decision = evaluate_github_webhook(headers=self.headers, body=body, secret=secret)
+        if decision.should_trigger:
+            try:
+                write_deploy_trigger(self.server.deploy_trigger_path, decision.revision)
+            except (OSError, ValueError):
+                self._json(
+                    {"error": "deploy_trigger_unavailable"},
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
+                return
+        self._json(decision.payload, HTTPStatus(decision.status))
 
     def _post_message(self) -> None:
         if not self._origin_allowed():
@@ -476,6 +531,8 @@ def create_http_server(
     port: int = DEFAULT_PORT,
     database_path: Path | None = None,
     admin_password_hash: str | None = None,
+    github_webhook_secret: bytes | None = None,
+    deploy_trigger_path: Path | None = None,
 ) -> CommunityHTTPServer:
     try:
         if not ipaddress.ip_address(host).is_loopback:
@@ -494,6 +551,13 @@ def create_http_server(
             if admin_password_hash is None
             else admin_password_hash
         ),
+        (
+            _configured_github_webhook_secret()
+            if github_webhook_secret is None
+            else github_webhook_secret
+        ),
+        deploy_trigger_path
+        or Path(os.getenv("SUNMAO_DEPLOY_TRIGGER_PATH", "/run/sunmao-community/deploy.trigger")),
     )
 
 

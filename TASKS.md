@@ -2,7 +2,7 @@
 
 ## 进行中
 
-- [ ] MIG-003 在手机云端 Codex 建立可持续发布社区的独立工作环境。本次已从本地桌面经新加坡 `/home/compassdev/bin/beijing-admin` 实际发布成功，但另一个云端窗口不会自动继承此连接；需让手机任务实际选用这个既有新加坡环境，不能把本地成功冒充跨窗口已接通。
+- [ ] MIG-003 打通手机 Codex Cloud 直接操作独立 GitHub 仓库、`production` 事件自动触发北京社区发布的完整链路。开发候选 `0.3.1` 已实现 HMAC Webhook 、systemd path 和无 timer 发布契约；待生产安装 Git 外密钥、配置 GitHub Webhook 并做一次真实 `production` 端到端验收。
 
 ## 待办
 

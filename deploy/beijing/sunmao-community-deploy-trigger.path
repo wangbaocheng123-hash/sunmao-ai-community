@@ -1,0 +1,11 @@
+[Unit]
+Description=Trigger Sunmao AI Community deployment from a verified GitHub event
+After=sunmao-ai-community.service
+Requires=sunmao-ai-community.service
+
+[Path]
+PathExists=/run/sunmao-community/deploy.trigger
+Unit=sunmao-community-git-deploy.service
+
+[Install]
+WantedBy=multi-user.target

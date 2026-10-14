@@ -12,6 +12,8 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=TZ=Asia/Shanghai
 Environment=SUNMAO_COMMUNITY_DATABASE_PATH=/var/lib/sunmao-community/community.sqlite3
+Environment=SUNMAO_GITHUB_WEBHOOK_SECRET_FILE=/etc/sunmao-community/github-webhook.secret
+Environment=SUNMAO_DEPLOY_TRIGGER_PATH=/run/sunmao-community/deploy.trigger
 ExecStart=/usr/bin/python3 -m sunmao_community --host 127.0.0.1 --port 18808
 Restart=always
 RestartSec=10
@@ -26,8 +28,10 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
+RuntimeDirectory=sunmao-community
+RuntimeDirectoryMode=0750
 ReadOnlyPaths=/opt/sunmao-community/current
-ReadWritePaths=/var/lib/sunmao-community
+ReadWritePaths=/var/lib/sunmao-community /run/sunmao-community
 MemoryHigh=256M
 MemoryMax=384M
 TasksMax=96

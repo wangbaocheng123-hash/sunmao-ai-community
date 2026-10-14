@@ -1,5 +1,12 @@
 # 变更记录
 
+## 0.3.1 - 待发布
+
+- 新增 GitHub HMAC-SHA256 Webhook 接收入口，只接受独立社区仓库 `production` 分支的有效 push 事件。
+- 新增 systemd path 事件触发；平时无额外用户态常驻进程，不使用每分钟或其他 Git 轮询 timer。
+- 云端 Codex 只需修改、测试并推进 GitHub 分支；日常发布不再依赖新加坡 SSH 管理通道。
+- Webhook 密钥通过标准输入安装到 Git 外 `/etc/sunmao-community/github-webhook.secret`，接收入口无法选择任意命令或其他服务。
+
 ## 2026-10-14：访问统计与管理后台 0.3.0 正式上线
 
 - 把 `production` 从 `6de54e5` 安全快进到功能提交 `a54a95a0bbca1765447e656347c88a8c1f4e1838`；通过既有新加坡 `/home/compassdev/bin/beijing-admin` 连接北京，并只执行一次社区专用 `sunmao-community-git-deploy.service`。服务器发布器成功完成验证、原子切换和服务恢复。

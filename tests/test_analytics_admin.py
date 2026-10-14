@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -71,7 +72,7 @@ class CommunityAnalyticsTests(unittest.TestCase):
 
     def test_analytics_schema_does_not_store_ip_or_raw_user_agent(self) -> None:
         CommunityAnalyticsStore(self.database)
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection:
             columns = {
                 row[1]
                 for table in ("analytics_visitors", "analytics_sessions")
