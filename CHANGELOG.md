@@ -7,7 +7,7 @@
 - 云端 Codex 只需修改、测试并推进 GitHub 分支；日常发布不再依赖新加坡 SSH 管理通道。
 - Webhook 密钥通过标准输入安装到 Git 外 `/etc/sunmao-community/github-webhook.secret`，接收入口无法选择任意命令或其他服务。
 - 北京直连 `github.com` 的 Git TLS 下载短暂失败时，发布器会在45秒有界尝试后使用 GitHub 官方 API 验证 `production` 快进关系，并从不可变提交的 codeload 压缩包安全解压；仍运行全部隔离测试、原子切换和回滚。systemd 只在发布失败时有界重试，不增加周期任务。
-- 引导提交 `e39b903` 已上线；Webhook `697357007` 的签名 ping 返回200，无效签名返回403，事件 path 为 `active/enabled`，timer 不存在。下一个 `production` push 用于验收无 SSH 人工命令的真实自动发布。
+- 引导提交 `e39b903` 上线后，Webhook `697357007` 的签名 ping 返回200，无效签名返回403，事件 path 为 `active/enabled`，timer 不存在；随后用真实 `production` push 验收了无 SSH 人工命令的自动发布。
 - 真实验收提交 `abceb04` 只经 GitHub `production` push 触发：Webhook 返回202，北京在同秒自动启动发布器，111秒后完成隔离测试、原子切换和回环验收。全过程没有执行新加坡或北京启动命令。
 
 ## 2026-10-14：访问统计与管理后台 0.3.0 正式上线

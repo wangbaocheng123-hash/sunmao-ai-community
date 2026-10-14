@@ -25,5 +25,6 @@
 - 当前自动化测试：27 项；功能提交发布前在 Linux 环境全部通过，服务器固定发布器完成验证和原子切换。
 - `0.3.1` 开发候选已将未来日常发布改为 GitHub `production` push 事件驱动：社区进程验证 HMAC-SHA256 签名、精确仓库、分支和提交号，再写入短暂触发文件，systemd path 仅启动社区固定发布器。不增加 Git 轮询 timer，不要求云端 Codex 连接新加坡或北京 SSH。
 - 引导发布中实测发现北京到 `github.com` 的 Git TLS 偶发中断；候选发布器已新增45秒有界 Git 尝试，以及 GitHub 官方 API 快进验证和按不可变提交 codeload 的安全备用下载，避免单次网络波动丢失事件发布。
-- `0.3.1` 已使用 GitHub API/codeload 备用链路完成首次引导上线，当前公网与回环提交为 `e39b903160fa01f3dfe9bdcd06f729beca4aac11`。Git 外密钥为 `root:sunmaocommunity 0640`，事件 path 为 `active/enabled`，Git 轮询 timer 不存在；无效签名返回403。
+- `0.3.1` 首次引导上线时使用 GitHub API/codeload 备用链路发布了 `e39b903160fa01f3dfe9bdcd06f729beca4aac11`。Git 外密钥为 `root:sunmaocommunity 0640`，事件 path 为 `active/enabled`，Git 轮询 timer 不存在；无效签名返回403。
 - GitHub 仓库 Webhook `697357007` 已启用且只订阅 push，创建后的签名 ping 返回 HTTP 200。真实 `production` push 于 `2026-10-14T00:44:05Z` 完成，GitHub 于 `00:44:06Z` 收到 HTTP 202，北京 systemd 在同秒自动启动发布器，并于 `00:45:57Z` 上线 `abceb04d1eb6ffe8b9913f58cdb559a8702f8a8a`。该次验收未执行任何新加坡或北京启动命令。
+- 后续验收记录提交同样只通过 `production` 事件自动上线；实际线上完整提交始终以公网 `/health/version` 为准。
