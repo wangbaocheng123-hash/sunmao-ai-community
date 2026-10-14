@@ -2,7 +2,7 @@
 
 ## 进行中
 
-- [ ] MIG-003 打通手机 Codex Cloud 直接操作独立 GitHub 仓库、`production` 事件自动触发北京社区发布的完整链路。`0.3.1`、Git 外密钥、HMAC Webhook、systemd path 和无 timer 契约已安装，签名 ping 返回200；本轮余下唯一验收是把下一个已测提交推进 `production`，确认不执行新加坡命令也能自动上线。
+- 暂无。
 
 ## 待办
 
@@ -17,6 +17,7 @@
 
 ## 已完成
 
+- [x] MIG-003 打通手机 Codex Cloud 直接操作独立 GitHub 仓库、`production` 事件自动触发北京社区发布的完整链路。Webhook ping 200；真实 `production` 事件返回202，北京同秒自动启动发布器并上线 `abceb04`。无 Git 轮询 timer，无新加坡启动命令，采集器与模型下载器保持 active。
 - [x] MIG-000 从旧大仓库提取独立本地仓库并保留相关历史。
 - [x] MIG-001 在 GitHub 创建 `wangbaocheng123-hash/sunmao-ai-community` 并同步 `main`。
 - [x] MIG-002 建立 `production` 分支并核验代码内容。
