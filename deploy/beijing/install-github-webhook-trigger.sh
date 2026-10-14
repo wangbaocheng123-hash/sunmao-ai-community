@@ -25,6 +25,7 @@ systemctl is-active --quiet sunmao-ai-community.service || fail "community servi
 systemctl is-active --quiet blogger-collector.service || fail "collector must remain healthy"
 
 IFS= read -r webhook_secret || fail "webhook secret was not supplied on standard input"
+webhook_secret="${webhook_secret%$'\r'}"
 [[ ${#webhook_secret} -ge 32 && ${#webhook_secret} -le 1024 ]] || fail "webhook secret length is invalid"
 [[ "${webhook_secret}" =~ ^[A-Za-z0-9_-]+$ ]] || fail "webhook secret contains an invalid character"
 

@@ -2,7 +2,7 @@
 
 ## 进行中
 
-- [ ] MIG-003 打通手机 Codex Cloud 直接操作独立 GitHub 仓库、`production` 事件自动触发北京社区发布的完整链路。开发候选 `0.3.1` 已实现 HMAC Webhook 、systemd path 和无 timer 发布契约；待生产安装 Git 外密钥、配置 GitHub Webhook 并做一次真实 `production` 端到端验收。
+- [ ] MIG-003 打通手机 Codex Cloud 直接操作独立 GitHub 仓库、`production` 事件自动触发北京社区发布的完整链路。`0.3.1`、Git 外密钥、HMAC Webhook、systemd path 和无 timer 契约已安装，签名 ping 返回200；本轮余下唯一验收是把下一个已测提交推进 `production`，确认不执行新加坡命令也能自动上线。
 
 ## 待办
 

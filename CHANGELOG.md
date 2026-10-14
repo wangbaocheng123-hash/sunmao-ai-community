@@ -1,12 +1,13 @@
 # 变更记录
 
-## 0.3.1 - 待发布
+## 0.3.1 - 已引导上线，待事件端到端验收
 
 - 新增 GitHub HMAC-SHA256 Webhook 接收入口，只接受独立社区仓库 `production` 分支的有效 push 事件。
 - 新增 systemd path 事件触发；平时无额外用户态常驻进程，不使用每分钟或其他 Git 轮询 timer。
 - 云端 Codex 只需修改、测试并推进 GitHub 分支；日常发布不再依赖新加坡 SSH 管理通道。
 - Webhook 密钥通过标准输入安装到 Git 外 `/etc/sunmao-community/github-webhook.secret`，接收入口无法选择任意命令或其他服务。
-- 北京直连 `github.com` 的 Git TLS 下载短暂失败时，发布器会先有界重试，再使用 GitHub 官方 API 验证 `production` 快进关系并从不可变提交的 codeload 压缩包安全解压；仍运行全部隔离测试、原子切换和回滚。
+- 北京直连 `github.com` 的 Git TLS 下载短暂失败时，发布器会在45秒有界尝试后使用 GitHub 官方 API 验证 `production` 快进关系，并从不可变提交的 codeload 压缩包安全解压；仍运行全部隔离测试、原子切换和回滚。systemd 只在发布失败时有界重试，不增加周期任务。
+- 引导提交 `e39b903` 已上线；Webhook `697357007` 的签名 ping 返回200，无效签名返回403，事件 path 为 `active/enabled`，timer 不存在。下一个 `production` push 用于验收无 SSH 人工命令的真实自动发布。
 
 ## 2026-10-14：访问统计与管理后台 0.3.0 正式上线
 
