@@ -1,5 +1,7 @@
 # 榫卯 AI 社区
 
+> 历史仓库（2026-11-10）：当前正式社区已回切到 [`instant-ai-finance/services/sunmao-ai-community`](https://github.com/wangbaocheng123-hash/instant-ai-finance/tree/main/services/sunmao-ai-community)，以该仓库的 `sunmao-production` 发布。此仓库保留尚未完成远端移交的主理人功能及恢复历史，不再作为日常开发或发布入口。当前正式网址为已备案的 `https://阿木爷爷.com/`。
+
 这是榫卯 AI 社区的独立代码仓库，不是北京博主采集器的页面、目录或子模块。
 
 两者可以部署在同一台北京服务器，但永久保持并列：

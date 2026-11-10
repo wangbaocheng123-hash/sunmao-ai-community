@@ -1,5 +1,7 @@
 # 榫卯 AI 社区仓库规则
 
+> 当前仓库已退出正式开发和发布。当前生产代码在 `wangbaocheng123-hash/instant-ai-finance` 的 `services/sunmao-ai-community/`；生产分支为该仓库的 `sunmao-production`。本仓库只保留历史及尚未完成远端移交的主理人功能。不要从本仓库的 `production` 发布；现行仓库完成上线验收后再按所有者要求处理本历史仓库。
+
 ## 每次开始
 
 按顺序阅读：
