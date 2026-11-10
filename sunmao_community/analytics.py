@@ -140,7 +140,33 @@ class CommunityAnalyticsStore:
                     visits INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY (day, device_type)
                 );
+                CREATE TABLE IF NOT EXISTS analytics_owner_aliases (
+                    visitor_hash TEXT PRIMARY KEY,
+                    visitors INTEGER NOT NULL DEFAULT 0,
+                    visits INTEGER NOT NULL DEFAULT 0,
+                    pageviews INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS analytics_browser_daily (
+                    day TEXT NOT NULL,
+                    visitor_hash TEXT NOT NULL,
+                    view TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    device_type TEXT NOT NULL,
+                    visits INTEGER NOT NULL DEFAULT 0,
+                    pageviews INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (day, visitor_hash, view, source, device_type)
+                );
+                CREATE TABLE IF NOT EXISTS analytics_identity_metadata (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    started_at TEXT NOT NULL,
+                    legacy_data INTEGER NOT NULL
+                );
                 """
+            )
+            connection.execute(
+                "INSERT OR IGNORE INTO analytics_identity_metadata VALUES (1, ?, "
+                "(SELECT CASE WHEN pageviews > 0 THEN 1 ELSE 0 END FROM analytics_totals WHERE id = 1))",
+                (datetime.now(UTC).isoformat(),),
             )
             current_epoch = int(time.time())
             self._purge_expired(connection, current_epoch)
@@ -165,8 +191,23 @@ class CommunityAnalyticsStore:
             "analytics_daily_pages",
             "analytics_daily_sources",
             "analytics_daily_devices",
+            "analytics_browser_daily",
         ):
             connection.execute(f"DELETE FROM {table} WHERE day < ?", (cutoff_day,))
+
+    def identify_owner(self, visitor_token: str) -> None:
+        """Called only after server-side admin authentication, never by page data."""
+        visitor_hash = _token_hash(visitor_token)
+        with self._write_lock, closing(self._connect()) as connection, connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO analytics_owner_aliases (visitor_hash, visitors, visits, pageviews) "
+                "SELECT ?, 1, visits, pageviews FROM analytics_visitors WHERE visitor_hash = ?",
+                (visitor_hash, visitor_hash),
+            )
+            connection.execute(
+                "INSERT OR IGNORE INTO analytics_owner_aliases (visitor_hash) VALUES (?)",
+                (visitor_hash,),
+            )
 
     def record_pageview(
         self,
@@ -308,6 +349,18 @@ class CommunityAnalyticsStore:
                         (event_day, device),
                     )
 
+                connection.execute(
+                    "INSERT INTO analytics_browser_daily VALUES (?, ?, ?, ?, ?, ?, 1) "
+                    "ON CONFLICT(day, visitor_hash, view, source, device_type) DO UPDATE SET "
+                    "visits = visits + excluded.visits, pageviews = pageviews + 1",
+                    (event_day, visitor_hash, view, source, device, is_new_session),
+                )
+                connection.execute(
+                    "UPDATE analytics_owner_aliases SET visitors = visitors + ?, "
+                    "visits = visits + ?, pageviews = pageviews + 1 WHERE visitor_hash = ?",
+                    (is_new_visitor, is_new_session, visitor_hash),
+                )
+
                 if event_epoch - self._last_purge_epoch >= 24 * 60 * 60:
                     self._purge_expired(connection, event_epoch)
                     self._last_purge_epoch = event_epoch
@@ -318,6 +371,7 @@ class CommunityAnalyticsStore:
         days: int = 14,
         recent_limit: int = 50,
         now_epoch: int | None = None,
+        exclude_owner: bool = False,
     ) -> dict[str, Any]:
         safe_days = max(1, min(90, int(days)))
         safe_limit = max(1, min(100, int(recent_limit)))
@@ -326,21 +380,10 @@ class CommunityAnalyticsStore:
         first_day = today - timedelta(days=safe_days - 1)
 
         with closing(self._connect()) as connection:
+            connection.execute("BEGIN")
             totals = connection.execute(
                 "SELECT visitors, visits, pageviews, first_event_at, last_event_at FROM analytics_totals WHERE id = 1"
             ).fetchone()
-            today_metrics = connection.execute(
-                "SELECT visits, pageviews FROM analytics_daily WHERE day = ?",
-                (today.isoformat(),),
-            ).fetchone()
-            today_visitors = connection.execute(
-                "SELECT COUNT(*) AS count FROM analytics_daily_visitors WHERE day = ?",
-                (today.isoformat(),),
-            ).fetchone()["count"]
-            online_now = connection.execute(
-                "SELECT COUNT(*) AS count FROM analytics_visitors WHERE last_seen_epoch >= ?",
-                (current_epoch - 300,),
-            ).fetchone()["count"]
             daily_rows = connection.execute(
                 """
                 SELECT daily.day, daily.visits, daily.pageviews,
@@ -365,7 +408,7 @@ class CommunityAnalyticsStore:
                 """
                 SELECT source, SUM(visits) AS visits
                 FROM analytics_daily_sources WHERE day >= ?
-                GROUP BY source ORDER BY visits DESC, source LIMIT 10
+                GROUP BY source ORDER BY visits DESC, source
                 """,
                 (first_day.isoformat(),),
             ).fetchall()
@@ -380,12 +423,51 @@ class CommunityAnalyticsStore:
             visitor_rows = connection.execute(
                 """
                 SELECT visitor_label, first_seen_at, last_seen_at, visits, pageviews,
-                       last_view, referrer_host, device_type
+                       last_view, referrer_host, device_type, visitor_hash
                 FROM analytics_visitors
-                ORDER BY last_seen_epoch DESC LIMIT ?
+                ORDER BY last_seen_epoch DESC
                 """,
-                (safe_limit,),
             ).fetchall()
+
+            owner_aliases = {row["visitor_hash"] for row in connection.execute(
+                "SELECT visitor_hash FROM analytics_owner_aliases"
+            )}
+            owner_totals = connection.execute(
+                "SELECT COALESCE(SUM(visitors), 0), COALESCE(SUM(visits), 0), "
+                "COALESCE(SUM(pageviews), 0) FROM analytics_owner_aliases"
+            ).fetchone()
+            owner_daily = connection.execute(
+                "SELECT day, SUM(b.visits) AS visits, SUM(b.pageviews) AS pageviews "
+                "FROM analytics_browser_daily AS b JOIN analytics_owner_aliases USING(visitor_hash) "
+                "WHERE day >= ? GROUP BY day", (first_day.isoformat(),),
+            ).fetchall()
+            day_visitors: dict[str, set[str]] = {}
+            for row in connection.execute(
+                "SELECT day, visitor_hash FROM analytics_daily_visitors WHERE day >= ?",
+                (first_day.isoformat(),),
+            ):
+                identity = "owner" if row["visitor_hash"] in owner_aliases else row["visitor_hash"]
+                if not (exclude_owner and identity == "owner"):
+                    day_visitors.setdefault(row["day"], set()).add(identity)
+            online_identities = {
+                "owner" if row["visitor_hash"] in owner_aliases else row["visitor_hash"]
+                for row in connection.execute(
+                    "SELECT visitor_hash FROM analytics_visitors WHERE last_seen_epoch >= ?",
+                    (current_epoch - 300,),
+                )
+            }
+            if exclude_owner:
+                online_identities.discard("owner")
+            identity_metadata = connection.execute(
+                "SELECT started_at, legacy_data FROM analytics_identity_metadata WHERE id = 1"
+            ).fetchone()
+            owner_dimensions = {}
+            for dimension in ("view", "source", "device_type"):
+                owner_dimensions[dimension] = {row[0]: int(row[1]) for row in connection.execute(
+                    f"SELECT {dimension}, SUM(b.{'pageviews' if dimension == 'view' else 'visits'}) "
+                    "FROM analytics_browser_daily AS b JOIN analytics_owner_aliases USING(visitor_hash) "
+                    f"WHERE day >= ? GROUP BY {dimension}", (first_day.isoformat(),),
+                )}
 
         trend_by_day = {
             str(row["day"]): {
@@ -396,6 +478,14 @@ class CommunityAnalyticsStore:
             }
             for row in daily_rows
         }
+        for row in owner_daily:
+            if exclude_owner and row["day"] in trend_by_day:
+                for metric in ("visits", "pageviews"):
+                    trend_by_day[row["day"]][metric] = max(
+                        0, trend_by_day[row["day"]][metric] - row[metric]
+                    )
+        for day, values in trend_by_day.items():
+            values["visitors"] = len(day_visitors.get(day, set()))
         trend = []
         for offset in range(safe_days):
             current_day = first_day + timedelta(days=offset)
@@ -407,24 +497,59 @@ class CommunityAnalyticsStore:
                 )
             )
 
+        recent = []
+        owner_rows = []
+        for row in visitor_rows:
+            item = dict(row)
+            is_owner = item.pop("visitor_hash") in owner_aliases
+            item["principal_id"] = "owner" if is_owner else ""
+            if is_owner:
+                owner_rows.append(item)
+            else:
+                recent.append(item)
+        if owner_rows and not exclude_owner:
+            owner = dict(owner_rows[0])
+            owner.update(
+                visitor_label="主理人 · 本人",
+                first_seen_at=min(row["first_seen_at"] for row in owner_rows),
+                visits=int(owner_totals[1]), pageviews=int(owner_totals[2]),
+                device_type="multiple" if len({row["device_type"] for row in owner_rows}) > 1 else owner["device_type"],
+            )
+            recent.append(owner)
+        recent.sort(key=lambda row: row["last_seen_at"], reverse=True)
+
+        def filtered_dimensions(rows, dimension, metric):
+            result = []
+            for row in rows:
+                value = dict(row)
+                if exclude_owner:
+                    value[metric] = max(0, value[metric] - owner_dimensions[dimension].get(value[dimension], 0))
+                if value[metric]:
+                    result.append(value)
+            return sorted(result, key=lambda row: (-row[metric], row[dimension]))
+
+        today_values = trend_by_day.get(today.isoformat(), {"visits": 0, "pageviews": 0})
         return {
             "generated_at": datetime.fromtimestamp(current_epoch, UTC).isoformat(),
             "timezone": "Asia/Shanghai",
             "retention_days": self.retention_days,
+            "exclude_owner": exclude_owner,
+            "identity_filter_started_at": identity_metadata["started_at"],
+            "legacy_breakdown_unattributed": bool(identity_metadata["legacy_data"]),
             "summary": {
-                "total_visitors": int(totals["visitors"]),
-                "total_visits": int(totals["visits"]),
-                "total_pageviews": int(totals["pageviews"]),
-                "today_visitors": int(today_visitors),
-                "today_visits": int(today_metrics["visits"]) if today_metrics else 0,
-                "today_pageviews": int(today_metrics["pageviews"]) if today_metrics else 0,
-                "online_now": int(online_now),
+                "total_visitors": max(0, int(totals["visitors"]) - int(owner_totals[0])) + int(not exclude_owner and owner_totals[0] > 0),
+                "total_visits": max(0, int(totals["visits"]) - (int(owner_totals[1]) if exclude_owner else 0)),
+                "total_pageviews": max(0, int(totals["pageviews"]) - (int(owner_totals[2]) if exclude_owner else 0)),
+                "today_visitors": len(day_visitors.get(today.isoformat(), set())),
+                "today_visits": int(today_values["visits"]),
+                "today_pageviews": int(today_values["pageviews"]),
+                "online_now": len(online_identities),
                 "first_event_at": str(totals["first_event_at"]),
                 "last_event_at": str(totals["last_event_at"]),
             },
             "trend": trend,
-            "pages": [dict(row) for row in page_rows],
-            "sources": [dict(row) for row in source_rows],
-            "devices": [dict(row) for row in device_rows],
-            "recent_visitors": [dict(row) for row in visitor_rows],
+            "pages": filtered_dimensions(page_rows, "view", "pageviews"),
+            "sources": filtered_dimensions(source_rows, "source", "visits")[:10],
+            "devices": filtered_dimensions(device_rows, "device_type", "visits"),
+            "recent_visitors": recent[:safe_limit],
         }

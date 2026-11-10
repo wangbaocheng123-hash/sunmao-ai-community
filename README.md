@@ -37,6 +37,10 @@ python -m scripts.generate_admin_password_hash
 
 ## 发布规则
 
+开发版 `0.3.3` 增加固定“主理人”身份。后台登录默认勾选“此设备保持登录 30 天”，同浏览器更换网络或社区服务重启均保留登录；电脑和手机分别验证一次后，在访客表合并为“主理人 · 本人”。主动退出、到期或密码摘要配置改变后重新验证；清理浏览器 Cookie、更换浏览器或域名也需要验证。新功能尚未发布，原内存凭证无法迁移，上线后第一次需重新登录。
+
+后台增加登录记录和“排除主理人”开关。历史只关联能确认的浏览器编号；没有归属明细的旧趋势、来源和设备数据保持原统计口径，过滤时会提示。运行 `python -m scripts.verify_owner_ui` 可用 Playwright 与 `/usr/bin/chromium` 做隔离浏览器验证，生成的临时密码、Cookie、数据库不进入 Git。具体决策见 ADR-0005。
+
 普通 `main` 推送只保存开发检查点，不上线。所有者明确说“更新并发布榫卯AI社区：<具体需求>”后，才允许把已验收提交安全快进到 `production`。GitHub 随后发送带 HMAC-SHA256 签名的 push Webhook；北京社区进程验证仓库、分支、提交号和签名后，通过 systemd path 一次性启动 `sunmao-community-git-deploy.service`。该发布只切换 `/opt/sunmao-community/current` 并重启社区进程。
 
 服务器已于 2026-10-13 切换到本独立仓库。当前网站由独立社区进程提供；普通社区功能发布不重启博主采集器。修改 `main` 或在手机云端完成任务不等于网站已发布：仍须经授权推进 `production`，由 GitHub 事件触发北京固定发布器，最后核对只读部署探针 `/health/version` 的提交号。服务器不进行每分钟或其他周期的 Git 轮询。

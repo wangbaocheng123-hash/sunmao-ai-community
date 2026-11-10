@@ -19,6 +19,7 @@
       <form id="loginForm" class="login-form">
         <label for="password">后台密码</label>
         <input id="password" name="password" type="password" minlength="12" maxlength="256" autocomplete="current-password" required autofocus>
+        <label class="checkbox-label" for="remember"><input id="remember" name="remember" type="checkbox" checked>此设备保持登录 30 天</label>
         <button id="loginButton" type="submit">进入后台</button>
         <p id="loginStatus" class="form-status" aria-live="polite"></p>
       </form>
@@ -43,11 +44,12 @@
       <nav aria-label="后台导航">
         <a class="is-active" href="#overview"><span>01</span>数据总览</a>
         <a href="#visitors"><span>02</span>最近访客</a>
-        <a href="#roadmap"><span>03</span>后台规划</a>
+        <a href="#login-history"><span>03</span>后台登录记录</a>
+        <a href="#roadmap"><span>04</span>后台规划</a>
       </nav>
       <div class="sidebar-note">
         <strong>隐私说明</strong>
-        <p>访客以随机编号显示，不保存 IP 地址。真实姓名要等会员账号功能上线后才能识别。</p>
+        <p>主理人由管理员登录确认，其他访客以随机编号显示。不保存 IP 地址，不从编号推断真实姓名。</p>
       </div>
     </aside>
 
@@ -59,6 +61,7 @@
           <p id="updatedAt" class="updated-at">正在读取最新数据…</p>
         </div>
         <div class="header-actions">
+          <strong id="ownerName" class="owner-badge">主理人</strong>
           <label for="periodSelect">统计周期</label>
           <select id="periodSelect">
             <option value="7">近 7 天</option>
@@ -74,10 +77,12 @@
       <section id="overview" aria-labelledby="overviewTitle">
         <div class="section-title">
           <div><span>01</span><h2 id="overviewTitle">今天与累计</h2></div>
-          <p>“在线”表示最近 5 分钟内有浏览行为的匿名访客。</p>
+          <p>“在线”表示最近 5 分钟内有浏览行为的访客，主理人的已验证设备合并计数。</p>
         </div>
+        <label class="checkbox-label filter-toggle" for="excludeOwner"><input id="excludeOwner" type="checkbox">排除主理人，只看其他访客</label>
+        <p id="filterNote" class="filter-note"></p>
         <div id="summaryGrid" class="summary-grid" aria-live="polite">
-          <article><span>今日访客</span><strong id="todayVisitors">—</strong><small>独立匿名访客</small></article>
+          <article><span>今日访客</span><strong id="todayVisitors">—</strong><small>按访客身份去重</small></article>
           <article><span>今日访问</span><strong id="todayVisits">—</strong><small>30 分钟会话</small></article>
           <article><span>今日浏览</span><strong id="todayPageviews">—</strong><small>页面浏览次数</small></article>
           <article class="accent"><span>当前在线</span><strong id="onlineNow">—</strong><small>最近 5 分钟</small></article>
@@ -109,8 +114,8 @@
 
       <section id="visitors" class="visitor-section" aria-labelledby="visitorTitle">
         <div class="section-title">
-          <div><span>02</span><h2 id="visitorTitle">最近匿名访客</h2></div>
-          <p>同一浏览器会得到稳定编号；清理 Cookie 或更换设备后会成为新访客。</p>
+          <div><span>02</span><h2 id="visitorTitle">最近访客</h2></div>
+          <p>已验证的管理员浏览器合并显示为“主理人 · 本人”，其他访客保留匿名编号。</p>
         </div>
         <div class="table-shell">
           <table>
@@ -121,9 +126,21 @@
         </div>
       </section>
 
+      <section id="login-history" aria-labelledby="loginHistoryTitle">
+        <div class="section-title">
+          <div><span>03</span><h2 id="loginHistoryTitle">后台登录记录</h2></div>
+          <p>记录进入后台时的密码验证或自动登录，时间按北京时间显示。</p>
+        </div>
+        <div class="table-shell login-history">
+          <table><thead><tr><th>身份</th><th>登录时间</th><th>登录方式</th><th>设备</th></tr></thead><tbody id="loginRows"></tbody></table>
+          <p id="loginEmpty" class="empty-state" hidden>暂无登录记录。</p>
+        </div>
+        <p id="loginHistoryStatus" class="filter-note" aria-live="polite"></p>
+      </section>
+
       <section id="roadmap" class="roadmap-section" aria-labelledby="roadmapTitle">
         <div class="section-title">
-          <div><span>03</span><h2 id="roadmapTitle">后台规划</h2></div>
+          <div><span>04</span><h2 id="roadmapTitle">后台规划</h2></div>
           <p>保持一个后台，按经营需要逐步开放。</p>
         </div>
         <div class="roadmap-grid">

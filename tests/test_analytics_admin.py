@@ -117,7 +117,7 @@ class CommunityAnalyticsHTTPTests(unittest.TestCase):
         self.thread.join(timeout=3)
         self.temporary_directory.cleanup()
 
-    def request(self, method: str, path: str, payload=None, *, cookie: str = ""):
+    def request(self, method: str, path: str, payload=None, *, cookie: str = "", extra_headers=None):
         connection = http.client.HTTPConnection(
             "127.0.0.1", self.server.server_port, timeout=3
         )
@@ -128,6 +128,7 @@ class CommunityAnalyticsHTTPTests(unittest.TestCase):
             headers["Origin"] = self.origin
         if cookie:
             headers["Cookie"] = cookie
+        headers.update(extra_headers or {})
         connection.request(method, path, body=body, headers=headers)
         response = connection.getresponse()
         result = response.status, response.getheaders(), json.loads(response.read())
@@ -193,6 +194,94 @@ class CommunityAnalyticsHTTPTests(unittest.TestCase):
         self.assertEqual(response.getheader("X-Robots-Tag"), "noindex, nofollow")
         self.assertIn("社区后台", response.read().decode("utf-8"))
         connection.close()
+
+    def test_owner_cookie_survives_restart_and_network_change_and_logout_revokes(self) -> None:
+        status, headers, login = self.request(
+            "POST", "/api/admin/login", {"password": self.password},
+            extra_headers={"X-Forwarded-For": "192.0.2.1"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(login["owner"]["principal_id"], "owner")
+        cookie = self.cookie_header(headers)
+        auth_cookie = next(value for name, value in headers if name.lower() == "set-cookie" and value.startswith("sunmao_admin_session="))
+        self.assertIn("Max-Age=2592000", auth_cookie)
+        self.assertIn("HttpOnly", auth_cookie)
+        self.assertIn("SameSite=Strict", auth_cookie)
+        password_hash = self.server.admin_auth.password_hash
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=3)
+        self.server = create_http_server(port=0, database_path=self.root / "community.sqlite3", admin_password_hash=password_hash)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.origin = f"http://127.0.0.1:{self.server.server_port}"
+        status, _, resumed = self.request("GET", "/api/admin/session", cookie=cookie,
+                                         extra_headers={"X-Forwarded-For": "198.51.100.2"})
+        self.assertEqual(status, 200)
+        self.assertTrue(resumed["authenticated"])
+        self.assertEqual(login["owner"], resumed["owner"])
+        status, _, _ = self.request("POST", "/api/admin/resume", {}, cookie=cookie)
+        self.assertEqual(status, 200)
+        _, _, events = self.request("GET", "/api/admin/login-events", cookie=cookie)
+        self.assertEqual([event["method"] for event in events["events"]], ["automatic", "password"])
+        self.assertTrue(all(event["principal_id"] == "owner" for event in events["events"]))
+        status, _, _ = self.request("POST", "/api/admin/logout", {}, cookie=cookie)
+        self.assertEqual(status, 200)
+        status, _, _ = self.request("GET", "/api/admin/analytics", cookie=cookie)
+        self.assertEqual(status, 401)
+        _, _, session = self.request("GET", "/api/admin/session", cookie=cookie)
+        self.assertFalse(session["authenticated"])
+
+    def test_two_authenticated_devices_merge_but_same_ip_guest_stays_anonymous(self) -> None:
+        _, headers, _ = self.request("POST", "/api/analytics/pageview", {"view": "exchange"})
+        first_visitor = self.cookie_header(headers)
+        _, headers, _ = self.request("POST", "/api/admin/login", {"password": self.password}, cookie=first_visitor)
+        first_owner = self.cookie_header(headers)
+        _, headers, second = self.request(
+            "POST", "/api/admin/login", {"password": self.password},
+            extra_headers={"X-Forwarded-For": "198.51.100.2", "User-Agent": "iPhone Mobile"},
+        )
+        second_owner = self.cookie_header(headers)
+        self.assertEqual(second["owner"]["principal_id"], "owner")
+        self.request("POST", "/api/analytics/pageview", {"view": "joints"}, cookie=first_owner)
+        self.request("POST", "/api/analytics/pageview", {"view": "sizes"}, cookie=second_owner,
+                     extra_headers={"User-Agent": "iPhone Mobile"})
+        _, guest_headers, _ = self.request("POST", "/api/analytics/pageview", {"view": "exchange"})
+        guest = self.cookie_header(guest_headers)
+        _, _, guest_session = self.request("GET", "/api/admin/session", cookie=guest)
+        self.assertFalse(guest_session["authenticated"])
+        status, _, all_visitors = self.request("GET", "/api/admin/analytics", cookie=second_owner)
+        self.assertEqual(status, 200)
+        self.assertEqual(all_visitors["summary"]["total_visitors"], 2)
+        self.assertEqual(len(all_visitors["recent_visitors"]), 2)
+        owners = [row for row in all_visitors["recent_visitors"] if row["principal_id"] == "owner"]
+        self.assertEqual(len(owners), 1)
+        self.assertEqual(owners[0]["visitor_label"], "主理人 · 本人")
+        self.assertEqual(owners[0]["pageviews"], 3)
+        _, _, filtered = self.request("GET", "/api/admin/analytics?exclude_owner=1", cookie=second_owner)
+        for metric in ("total_visitors", "total_visits", "total_pageviews", "today_visitors", "today_visits", "today_pageviews", "online_now"):
+            self.assertEqual(filtered["summary"][metric], 1, metric)
+        self.assertEqual(sum(row["pageviews"] for row in filtered["pages"]), 1)
+        self.assertEqual(sum(row["visits"] for row in filtered["sources"]), 1)
+        self.assertEqual(sum(row["visits"] for row in filtered["devices"]), 1)
+        self.assertEqual(sum(row["pageviews"] for row in filtered["trend"]), 1)
+        self.assertTrue(filtered["recent_visitors"][0]["visitor_label"].startswith("木友-"))
+        self.assertNotIn("visitor_hash", filtered["recent_visitors"][0])
+
+    def test_short_session_and_amuyeye_https_origin_and_cookie_flags(self) -> None:
+        status, headers, payload = self.request(
+            "POST", "/api/admin/login", {"password": self.password, "remember": False},
+            extra_headers={"Host": "amuyeye.com", "Origin": "https://amuyeye.com", "X-Forwarded-Proto": "https"},
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(payload["owner"]["remembered"])
+        auth_cookie = next(value for name, value in headers if name.lower() == "set-cookie" and value.startswith("sunmao_admin_session="))
+        self.assertNotIn("Max-Age", auth_cookie)
+        self.assertIn("Secure", auth_cookie)
+        self.assertEqual(self.request("GET", "/api/admin/login-events")[0], 401)
+        self.assertEqual(self.request("POST", "/api/admin/resume", {}, cookie=self.cookie_header(headers),
+                                      extra_headers={"Origin": "https://attacker.example"})[0], 403)
+        self.assertEqual(self.request("POST", "/api/analytics/pageview", {"view": "exchange", "principal_id": "owner"})[0], 400)
 
 
 if __name__ == "__main__":

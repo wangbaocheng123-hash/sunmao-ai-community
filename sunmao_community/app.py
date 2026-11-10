@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import parse_qs, urlsplit
 
-from .analytics import CommunityAnalyticsStore, VALID_ANALYTICS_VIEWS
+from .analytics import CommunityAnalyticsStore, VALID_ANALYTICS_VIEWS, classify_device
 from .auth import ADMIN_SESSION_SECONDS, AdminSessionManager
 from .deploy_webhook import (
     evaluate_github_webhook,
@@ -117,6 +117,10 @@ class CommunityHTTPServer(ThreadingHTTPServer):
         self.rate_limiter = CommunityRateLimiter()
         self.admin_rate_limiter = CommunityRateLimiter(cooldown_seconds=2, hourly_limit=12)
         super().__init__(address, CommunityRequestHandler)
+
+    def server_close(self) -> None:
+        super().server_close()
+        self.admin_auth.close()
 
 
 class CommunityRequestHandler(BaseHTTPRequestHandler):
@@ -241,7 +245,7 @@ class CommunityRequestHandler(BaseHTTPRequestHandler):
             or parsed.netloc.lower() != host
         ):
             return False
-        if parsed.hostname == "xn--4pv19va7008a.com":
+        if parsed.hostname in {"xn--4pv19va7008a.com", "amuyeye.com", "www.amuyeye.com"}:
             return parsed.scheme == "https" and origin_port in {None, 443}
         try:
             return parsed.scheme == "http" and ipaddress.ip_address(parsed.hostname).is_loopback
@@ -274,22 +278,28 @@ class CommunityRequestHandler(BaseHTTPRequestHandler):
         name: str,
         value: str,
         *,
-        max_age: int,
+        max_age: int | None,
         same_site: str = "Lax",
     ) -> str:
         parts = [
             f"{name}={value}",
             "Path=/",
-            f"Max-Age={max(0, int(max_age))}",
             "HttpOnly",
             f"SameSite={same_site}",
         ]
+        if max_age is not None:
+            parts.append(f"Max-Age={max(0, int(max_age))}")
         if self._is_https():
             parts.append("Secure")
         return "; ".join(parts)
 
     def _admin_authenticated(self) -> bool:
         return self.server.admin_auth.authenticated(self._cookie_value(ADMIN_COOKIE))
+
+    def _identify_owner_browser(self) -> list[str]:
+        visitor_token = self._cookie_value(VISITOR_COOKIE) or secrets.token_urlsafe(24)
+        self.server.analytics_store.identify_owner(visitor_token)
+        return [self._cookie_header(VISITOR_COOKIE, visitor_token, max_age=180 * 24 * 60 * 60)]
 
     def do_GET(self) -> None:
         parsed = urlsplit(self.path)
@@ -324,12 +334,14 @@ class CommunityRequestHandler(BaseHTTPRequestHandler):
                     HTTPStatus.SERVICE_UNAVAILABLE,
                 )
                 return
-            self._json(
-                {
-                    "authenticated": self._admin_authenticated(),
-                    "configured": True,
-                }
-            )
+            session = self.server.admin_auth.session(self._cookie_value(ADMIN_COOKIE))
+            self._json({"authenticated": bool(session), "configured": True, "owner": session})
+            return
+        if parsed.path == "/api/admin/login-events":
+            if not self._admin_authenticated():
+                self._json({"error": "admin_auth_required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            self._json({"events": self.server.admin_auth.login_events()})
             return
         if parsed.path == "/api/admin/analytics":
             if not self._admin_authenticated():
@@ -343,7 +355,8 @@ class CommunityRequestHandler(BaseHTTPRequestHandler):
                 days, recent_limit = 14, 50
             try:
                 payload = self.server.analytics_store.dashboard(
-                    days=days, recent_limit=recent_limit
+                    days=days, recent_limit=recent_limit,
+                    exclude_owner=(query.get("exclude_owner") or ["0"])[0] == "1",
                 )
             except (OSError, sqlite3.Error):
                 self._json({"error": "analytics_unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
@@ -365,6 +378,9 @@ class CommunityRequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/admin/logout":
             self._post_admin_logout()
+            return
+        if path == "/api/admin/resume":
+            self._post_admin_resume()
             return
         if path == GITHUB_WEBHOOK_PATH:
             self._post_github_deploy()
@@ -456,6 +472,8 @@ class CommunityRequestHandler(BaseHTTPRequestHandler):
             )
         )
         try:
+            if self._admin_authenticated():
+                self.server.analytics_store.identify_owner(visitor_token)
             self.server.analytics_store.record_pageview(
                 visitor_token=visitor_token,
                 session_token=session_token,
@@ -480,9 +498,10 @@ class CommunityRequestHandler(BaseHTTPRequestHandler):
             return
         if (
             not isinstance(payload, dict)
-            or set(payload) != {"password"}
+            or not set(payload).issubset({"password", "remember"})
             or not isinstance(payload.get("password"), str)
             or len(payload["password"]) > 256
+            or not isinstance(payload.get("remember", True), bool)
         ):
             self._json({"error": "invalid_request"}, HTTPStatus.BAD_REQUEST)
             return
@@ -494,21 +513,50 @@ class CommunityRequestHandler(BaseHTTPRequestHandler):
                 headers={"Retry-After": str(retry_after)},
             )
             return
-        session_token = self.server.admin_auth.login(payload["password"])
+        remember = payload.get("remember", True)
+        session_token = self.server.admin_auth.login(
+            payload["password"], remember=remember,
+            device_type=classify_device(self.headers.get("User-Agent", "")),
+        )
         if session_token is None:
             self._json({"error": "invalid_credentials"}, HTTPStatus.UNAUTHORIZED)
             return
+        try:
+            cookies = self._identify_owner_browser()
+        except (OSError, sqlite3.Error):
+            self.server.admin_auth.logout(session_token)
+            self._json({"error": "analytics_unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+        self.server.admin_auth.logout(self._cookie_value(ADMIN_COOKIE))
         self._json(
-            {"authenticated": True},
-            cookies=[
+            {"authenticated": True, "owner": self.server.admin_auth.session(session_token)},
+            cookies=cookies + [
                 self._cookie_header(
                     ADMIN_COOKIE,
                     session_token,
-                    max_age=ADMIN_SESSION_SECONDS,
+                    max_age=ADMIN_SESSION_SECONDS if remember else None,
                     same_site="Strict",
                 )
             ],
         )
+
+    def _post_admin_resume(self) -> None:
+        if not self._origin_allowed():
+            self._json({"error": "same_origin_required"}, HTTPStatus.FORBIDDEN)
+            return
+        token = self._cookie_value(ADMIN_COOKIE)
+        if not self._admin_authenticated():
+            self._json({"error": "admin_auth_required"}, HTTPStatus.UNAUTHORIZED)
+            return
+        try:
+            cookies = self._identify_owner_browser()
+            accepted = self.server.admin_auth.record_resume(
+                token, device_type=classify_device(self.headers.get("User-Agent", "")),
+            )
+        except (OSError, sqlite3.Error):
+            self._json({"error": "admin_unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+        self._json({"authenticated": accepted, "owner": self.server.admin_auth.session(token)}, cookies=cookies)
 
     def _post_admin_logout(self) -> None:
         if not self._origin_allowed():
@@ -520,7 +568,9 @@ class CommunityRequestHandler(BaseHTTPRequestHandler):
             cookies=[
                 self._cookie_header(
                     ADMIN_COOKIE, "", max_age=0, same_site="Strict"
-                )
+                ),
+                self._cookie_header(VISITOR_COOKIE, "", max_age=0),
+                self._cookie_header(VISIT_SESSION_COOKIE, "", max_age=0),
             ],
         )
 
@@ -549,7 +599,8 @@ def create_http_server(
         AdminSessionManager(
             _configured_admin_password_hash()
             if admin_password_hash is None
-            else admin_password_hash
+            else admin_password_hash,
+            database_path=database,
         ),
         (
             _configured_github_webhook_secret()

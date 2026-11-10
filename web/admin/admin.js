@@ -10,6 +10,7 @@ const DEVICE_LABELS = {
   mobile: "手机",
   tablet: "平板",
   bot: "自动程序",
+  multiple: "多设备",
 };
 const NUMBER_FORMAT = new Intl.NumberFormat("zh-CN");
 const TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
@@ -127,6 +128,7 @@ function renderVisitors(visitors) {
   const fragment = document.createDocumentFragment();
   rows.forEach((visitor) => {
     const row = document.createElement("tr");
+    if (visitor.principal_id === "owner") row.className = "owner-row";
     row.append(
       tableCell(visitor.visitor_label || "匿名访客"),
       tableCell(formatTime(visitor.last_seen_at)),
@@ -148,6 +150,9 @@ function renderDashboard(payload) {
   renderRanking("sourceList", payload.sources, "source", "visits", sourceLabel);
   renderRanking("deviceList", payload.devices, "device_type", "visits", (value) => DEVICE_LABELS[value] || value);
   renderVisitors(payload.recent_visitors);
+  setText("filterNote", payload.exclude_owner && payload.legacy_breakdown_unattributed
+    ? "已排除可识别的主理人访问。升级前未记录逐浏览器明细的历史趋势、来源和设备数据保留原统计口径。"
+    : (payload.exclude_owner ? "当前统计已排除主理人。" : "当前统计包含主理人，各个已验证设备合并为一个身份。"));
   setText("updatedAt", `更新于 ${formatTime(payload.generated_at)} · 数据按北京时间统计`);
 }
 
@@ -155,11 +160,12 @@ async function loadDashboard() {
   const status = document.querySelector("#dashboardStatus");
   const refreshButton = document.querySelector("#refreshButton");
   const days = document.querySelector("#periodSelect").value;
+  const excludeOwner = document.querySelector("#excludeOwner").checked ? "1" : "0";
   status.textContent = "";
   refreshButton.disabled = true;
   refreshButton.textContent = "刷新中…";
   try {
-    const response = await fetch(`/api/admin/analytics?days=${encodeURIComponent(days)}&limit=50`, { cache: "no-store" });
+    const response = await fetch(`/api/admin/analytics?days=${encodeURIComponent(days)}&limit=50&exclude_owner=${excludeOwner}`, { cache: "no-store" });
     if (response.status === 401) {
       showOnly("loginView");
       return;
@@ -174,6 +180,34 @@ async function loadDashboard() {
   }
 }
 
+async function loadLoginHistory() {
+  try {
+    const response = await fetch("/api/admin/login-events", { cache: "no-store" });
+    if (!response.ok) throw new Error("history unavailable");
+    const payload = await response.json();
+    const events = Array.isArray(payload.events) ? payload.events : [];
+    const fragment = document.createDocumentFragment();
+    events.forEach((event) => {
+      const row = document.createElement("tr");
+      row.append(tableCell(event.display_name || "主理人"), tableCell(formatTime(event.created_at)),
+        tableCell(event.method === "password" ? "密码登录" : "自动登录"),
+        tableCell(DEVICE_LABELS[event.device_type] || "未知"));
+      fragment.append(row);
+    });
+    document.querySelector("#loginRows").replaceChildren(fragment);
+    document.querySelector("#loginEmpty").hidden = events.length > 0;
+    setText("loginHistoryStatus", "");
+  } catch (_error) {
+    setText("loginHistoryStatus", "登录记录暂时未能读取，请刷新重试。");
+  }
+}
+
+async function enterDashboard(payload) {
+  setText("ownerName", (payload.owner || {}).display_name || "主理人");
+  showOnly("dashboardView");
+  await Promise.all([loadDashboard(), loadLoginHistory()]);
+}
+
 async function checkSession() {
   try {
     const response = await fetch("/api/admin/session", { cache: "no-store" });
@@ -181,8 +215,11 @@ async function checkSession() {
     if (payload.configured === false) {
       showOnly("setupView");
     } else if (payload.authenticated) {
-      showOnly("dashboardView");
-      await loadDashboard();
+      const resumed = await fetch("/api/admin/resume", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!resumed.ok) throw new Error("session unavailable");
+      await enterDashboard(await resumed.json());
     } else {
       showOnly("loginView");
     }
@@ -204,7 +241,7 @@ async function login(event) {
     const response = await fetch("/api/admin/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: form.elements.password.value }),
+      body: JSON.stringify({ password: form.elements.password.value, remember: form.elements.remember.checked }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -213,8 +250,7 @@ async function login(event) {
       throw new Error("暂时无法登录，请稍后重试。");
     }
     form.reset();
-    showOnly("dashboardView");
-    await loadDashboard();
+    await enterDashboard(payload);
   } catch (error) {
     status.textContent = error.message;
   } finally {
@@ -225,21 +261,24 @@ async function login(event) {
 
 async function logout() {
   try {
-    await fetch("/api/admin/logout", {
+    const response = await fetch("/api/admin/logout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
-  } finally {
+    if (!response.ok) throw new Error("logout unavailable");
     showOnly("loginView");
+  } catch (_error) {
+    setText("dashboardStatus", "退出未成功，请重试。");
   }
 }
 
 function initialize() {
   document.querySelector("#loginForm").addEventListener("submit", login);
   document.querySelector("#logoutButton").addEventListener("click", logout);
-  document.querySelector("#refreshButton").addEventListener("click", loadDashboard);
+  document.querySelector("#refreshButton").addEventListener("click", () => Promise.all([loadDashboard(), loadLoginHistory()]));
   document.querySelector("#periodSelect").addEventListener("change", loadDashboard);
+  document.querySelector("#excludeOwner").addEventListener("change", loadDashboard);
   setInterval(() => {
     if (!document.hidden && !document.querySelector("#dashboardView").hidden) loadDashboard();
   }, 60_000);
